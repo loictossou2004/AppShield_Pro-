@@ -10,7 +10,7 @@ dotenv.config();
 
 const corsOptions = {
   origin: "*",
-  credentials: true, //access-control-allow-credentials:true
+  credentials: true,
   optionSuccessStatus: 200,
 };
 const app = express();
@@ -24,17 +24,17 @@ client.on("connect", function () {
 });
 
 
-const key = Buffer.from(`${process.env.KEY_CRYPTO}`.padEnd(32, '\0'), 'utf8'); // Remplir la clé avec des zéros pour atteindre une longueur de 32 octets
+const key = Buffer.from(`${process.env.KEY_CRYPTO}`.padEnd(32, '\0'), 'utf8');
 
 function encryptAES(text, key) {
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, Buffer.alloc(16, 0)); // Utilisation de AES-256 en mode CBC
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, Buffer.alloc(16, 0)); 
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     return encrypted;
 }
 
 function decryptAES(ciphertext, key) {
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, Buffer.alloc(16, 0)); // Utilisation de AES-256 en mode CBC
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, Buffer.alloc(16, 0));
     let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
@@ -54,7 +54,7 @@ async function sendOTPByEmail(email) {
         }
     });
 
-    const OTPCode = otpGenerator.generate(6, { 
+    let OTPCode = otpGenerator.generate(6, { 
         digits: true,
         upperCaseAlphabets: false,
         specialChars: false,
@@ -76,9 +76,10 @@ async function sendOTPByEmail(email) {
     const date = maintenant.toLocaleDateString();
     const heure = maintenant.toLocaleTimeString();
     const dateTimeString = `${date} ${heure}`;
-    const OTPCrypt = encryptAES(OTPCode)
+    const OTPCrypt = encryptAES(OTPCode, key)
+    
 
-    client.set(`${email}`, `Code: ${OTPCode}; Date: ${dateTimeString}; attempts: 0`, (err, stu) => {
+    client.set(`${email}`, `Code: ${OTPCrypt}; Date: ${dateTimeString}; attempts: 0`, (err, stu) => {
         if (err) console.log(err);
         else console.log(stu);
     });
@@ -102,36 +103,39 @@ app.get('/verif', async(req, res) => {
     res.send('Hello World!');
 
     const emailOTP = "loic.tossou45@gmail.com"
-    const codeTOP = "78036"
+    const codeOTPSend = "48305"
 
-
-
-    
-    // console.log(`Code: ${OTPCode}; Date: ${dateTimeString} + ;  attempts: 0`);
-    
     let getValueRedis = await client.get(emailOTP)
-
     const elements = getValueRedis.split(";");
+
+    const GetOTPCodeEncrypt = elements[0].trim().split(" ");
+    const GetOTPCodeDecrypt = decryptAES (GetOTPCodeEncrypt[1], key);
+
     const attemptsElement = elements[2].trim().split(" ");
     let attemptValue = parseInt(attemptsElement[attemptsElement.length - 1]);
-    attemptValue++;
-    if (attemptValue > 3) {
-        console.error("Trop d'attempt")
-        client.del(emailOTP)
+    console.log(GetOTPCodeDecrypt)
+    console.log(elements)
+    console.log(attemptsElement)
+    console.log(attemptValue)
+    
+    if (GetOTPCodeDecrypt != codeOTPSend) {
+        attemptValue++;
+        if (attemptValue > 3) {
+            console.error("Trop d'attempt tu seras redirigé sur le formulaire d'auth")
+            client.del(emailOTP)
+        }
+        else {
+            elements[2] = ` attempts: ${attemptValue}`;
+            console.log(attemptsElement)
+            getValueRedis = elements.join(";");
+            client.set(emailOTP, getValueRedis);
+            console.error("Réessaye encore !!!")
+        }
     }
     else {
-        elements[2] = ` attempts: ${attemptValue}`;
-        getValueRedis = elements.join(";");
-        client.set(emailOTP, getValueRedis);
+        console.log('Vérification réussie')
     }
 
-
-
-    // if (parseInt(value) === parseInt(codeTOP)) {
-    //     console.log('Vérification réussie')
-    // }
-
-    // console.log(value)
 }),
 
 app.get('/Next', async(req, res) => {
