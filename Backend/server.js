@@ -5,6 +5,7 @@ const cors = require("cors");
 const otpGenerator = require('otp-generator');
 const redis = require('redis');
 const crypto = require('crypto');
+const bodyParser = require('body-parser');
 dotenv.config();
 
 // Permettre les requêtes
@@ -81,30 +82,43 @@ async function sendOTPByEmail(email) {
     });
 
 }
+app.use(bodyParser.urlencoded({ extended: false }));
+app.post('/SendOTPCode', async(req, res) => {
+//   res.send('Hello World!');
+//   console.log(process.env.SMTP_MAIL);
+    const email = req.body.email;
 
-app.get('/', async(req, res) => {
-  res.send('Hello World!');
-  console.log(process.env.SMTP_MAIL);
-
-  try {
-        await sendOTPByEmail("loic.tossou45@gmail.com");
-        console.log('OTP envoyé avec succès à l\'adresse e-mail :', "yanntossou@gmail.com");
+    if (!email) {
+        return res.status(400).send('Bad data');
+    }
+    try {
+        await sendOTPByEmail(email);
+        console.log('OTP envoyé avec succès à l\'adresse e-mail :', email);
+        res.send('OTP envoyé avec succès');
     } catch (error) {
         console.error('Erreur lors de l\'envoi de l\'OTP par e-mail :', error);
+        res.status(500).send('Erreur lors de l\'envoi de l\'OTP par e-mail');
     }
 
 }),
 
-app.get('/verif', async(req, res) => {
-    res.send('Hello World!');
+app.post('/CheckOTPCode', async(req, res) => {
+    // res.send('Hello World!');
+    const { emailOTP, OTPSend } = req.body;
 
-    const emailOTP = "loic.tossou45@gmail.com"
-    let codeOTPSend = createSHA256Hash("868549")
+    // Vérifiez si l'e-mail et le code OTP sont présents dans la requête
+    if (!emailOTP || !OTPSend) {
+        return res.status(400).send('Veuillez fournir l\'e-mail et le code OTP');
+    }
+
+
+    // const emailOTP = "loic.tossou45@gmail.com"
+    const HashOTPSend = createSHA256Hash(OTPSend)
 
     let getValueRedis = await client.get(emailOTP)
     const elements = getValueRedis.split(";");
 
-    let GetOTPCodeEncrypt = elements[0].trim().split(" ");
+    const GetOTPCodeEncrypt = elements[0].trim().split(" ");
 
     const attemptsElement = elements[2].trim().split(" ");
     let attemptValue = parseInt(attemptsElement[attemptsElement.length - 1]);
@@ -113,11 +127,12 @@ app.get('/verif', async(req, res) => {
     console.log(attemptsElement)
     console.log(attemptValue)
     
-    if (GetOTPCodeEncrypt[1] !== codeOTPSend) {
+    if (GetOTPCodeEncrypt[1] !== HashOTPSend) {
         attemptValue++;
         if (attemptValue > 3) {
             console.error("Trop d'attempt tu seras redirigé sur le formulaire d'auth")
             client.del(emailOTP)
+            res.status(500).send("Trop d'attempt tu seras redirigé sur le formulaire d'auth");
         }
         else {
             elements[2] = ` attempts: ${attemptValue}`;
@@ -125,10 +140,12 @@ app.get('/verif', async(req, res) => {
             getValueRedis = elements.join(";");
             client.set(emailOTP, getValueRedis);
             console.error("Réessaye encore !!!")
+            res.status(500).send('Réessaye encore !!!');
         }
     }
     else {
         console.log('Vérification réussie')
+        res.send('Vérification réussie');
     }
 
 }),
